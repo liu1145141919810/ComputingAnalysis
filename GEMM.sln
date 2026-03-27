@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36212.18
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GEMM_cuda", "GEMM_cuda\GEMM.vcxproj", "{5C5AE699-4BA7-4462-4D34-276CAC947C91}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GEMM_common", "GEMM_common\GEMM_common.vcxproj", "{648B7831-4348-4A88-9240-AE203D1EDA59}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GEMM_cpu", "GEMM_cpu\GEMM_cpu.vcxproj", "{0F22F18E-73C3-4888-9FCC-9F42A16A2B18}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5C5AE699-4BA7-4462-4D34-276CAC947C91}.Debug|x64.ActiveCfg = Debug|x64
+		{5C5AE699-4BA7-4462-4D34-276CAC947C91}.Debug|x64.Build.0 = Debug|x64
+		{5C5AE699-4BA7-4462-4D34-276CAC947C91}.Release|x64.ActiveCfg = Release|x64
+		{5C5AE699-4BA7-4462-4D34-276CAC947C91}.Release|x64.Build.0 = Release|x64
+		{648B7831-4348-4A88-9240-AE203D1EDA59}.Debug|x64.ActiveCfg = Debug|x64
+		{648B7831-4348-4A88-9240-AE203D1EDA59}.Debug|x64.Build.0 = Debug|x64
+		{648B7831-4348-4A88-9240-AE203D1EDA59}.Release|x64.ActiveCfg = Release|x64
+		{648B7831-4348-4A88-9240-AE203D1EDA59}.Release|x64.Build.0 = Release|x64
+		{0F22F18E-73C3-4888-9FCC-9F42A16A2B18}.Debug|x64.ActiveCfg = Debug|x64
+		{0F22F18E-73C3-4888-9FCC-9F42A16A2B18}.Debug|x64.Build.0 = Debug|x64
+		{0F22F18E-73C3-4888-9FCC-9F42A16A2B18}.Release|x64.ActiveCfg = Release|x64
+		{0F22F18E-73C3-4888-9FCC-9F42A16A2B18}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E111BE26-3DD1-47F1-8430-C0844F30EFDE}
+	EndGlobalSection
+EndGlobal
