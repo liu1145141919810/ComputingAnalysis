@@ -45,9 +45,137 @@ void GEMM_serial::change_loop_order(const float* vMatrixA, const float* vMatrixB
 
 ### 2.2 基于OpenMp的朴素GEMM
 
+```
+void GEMM_serial::change_loop_order(const float* vMatrixA, const float* vMatrixB, float* vMatrixC, size_t vM, size_t vN, size_t vK, float vAlpha, float vBeta, const std::any& vCustomParam)
+{
+//todo: add your code here
+    for (size_t i = 0; i < vM; ++i) {
+        for (size_t j = 0; j < vN; ++j) {
+            vMatrixC[i * vN + j] *= vBeta;
+        }
+    }
+    for (size_t k = 0; k < vK; ++k) {
+        for (size_t i = 0; i < vM; ++i) {
+            const float a_ik = vMatrixA[i * vK + k];
+            for (size_t j = 0; j < vN; ++j) {
+                vMatrixC[i * vN + j] += vAlpha * a_ik * vMatrixB[k * vN + j];
+            }
+        }
+    }
+}
+```
+在朴素实现的基础上，我们通过并行化多个矩阵行的计算，可以有效利用多核CPU的计算能力，实现显著的并行计算加速（通过#pragma omp parallel处理最外层的M迭代）。其并没有改变M-N-K的低效访问方式，只是使用OpenMP计算独立板块，发挥CPU的并行能力。具体的，我们将不同的矩阵行分配到多个线程执行，矩阵不同位置的计算不存在依赖，所以这种并行化是安全的，并能显著降低计算耗时
+
 ### 2.3 基于collapse子句的GEMM
 
+```
+void GEMM_openmp::collapse(const float* vMatrixA, const float* vMatrixB, float* vMatrixC, size_t vM, size_t vN, size_t vK, float vAlpha, float vBeta, const std::any& vCustomParam)
+{
+_ASSERTE(vMatrixA && vMatrixB && vMatrixC);
+//todo: add your code here
+int threadCount = 1;
+    if(vCustomParam.has_value()) {
+        threadCount = std::any_cast<int>(vCustomParam);
+    }
+    omp_set_num_threads(threadCount);
+    #pragma omp parallel
+    {
+        #pragma omp for collapse(2)
+        for (size_t i = 0; i < vM; ++i) {
+            for (size_t j = 0; j < vN; ++j) {
+                vMatrixC[i * vN + j] *= vBeta;
+            }
+        }
+        #pragma omp for collapse(2)
+        for (size_t i = 0; i < vM; ++i) {
+            for (size_t j = 0; j < vN; ++j) {
+                float sum = 0.0f;
+                for (size_t k = 0; k < vK; ++k) {
+                    sum += vMatrixA[i * vK + k] * vMatrixB[k * vN + j];
+                }
+                vMatrixC[i * vN + j] += vAlpha * sum;
+            }
+        }
+    }
+}
+```
+OpenMP 的 collapse 子句用于合并相邻层级的循环，将多层紧凑嵌套循环的迭代空间展平成一个更大的并行迭代空间。通过增加可并行的迭代数量，提高并行度，从而有利于 OpenMP 进行负载均衡分配，避免出现部分核心空闲而部分核心繁忙的情况。
+使用说明：其基本格式为 #pragma omp for collapse(x)，要求后面的 x 层循环必须是紧凑嵌套的，且不同迭代之间不存在数据依赖关系。语义上，该指令会将原本的多维循环迭代空间映射为一维的并行迭代空间，例如：
+```
+#pragma omp for collapse(2)
+for (int i = 0; i < M; ++i) {
+    for (int j = 0; j < N; ++j) {
+        // logic    }
+}
+```
+转换成
+```
+int total_iters = M * N; 
+#pragma omp parallel for
+for (int idx = 0; idx < total_iters; ++idx) {
+    int i = idx / N; 
+int j = idx % N
+//logic
+;}
+```
+的等价形式
+
+核心代码已经在表 3 中。这里我们对 GEMM 的三层循环（M–N–K）使用 #pragma omp for collapse(2) 对最外层的 M 和 N 两层循环进行合并（要求循环是紧凑且相邻的）。由于 M 和 N 对应的循环迭代之间不存在数据依赖，因此可以安全地进行并行化。
+同时，为了减少内存访问次数并提高计算效率，在每个线程内部使用局部变量 sum 对最内层 k 循环的乘加结果进行累加，最后再一次性写回到 C[i][j] 中，从而避免对同一元素的频繁读写。
+
+数据竞争：内层K循环的累加依赖于同一个C[i][j]的K次计算加入结果，因此不能三个维度一起colllapse，否则同一个C[i][j]会被多个线程设法同时写入，造成竞争降低效率。
+避免线程间同步开销：
+K循环作为核心的串行可避免线程间同步的花费，充分利用寄存器缓存A[i][k]和B[k][j]的局部性
+过细导致问题：
+若将三层循环全部 collapse，则每个 (i,j,k) 迭代成为并行单元，粒度过细，线程调度和同步开销可能超过并行加速收益
+
 ### 2.4 基于collapse手动实现的GEMM
+
+```
+void GEMM_openmp::collapse_manual(const float* vMatrixA, const float* vMatrixB, float* vMatrixC, size_t vM, size_t vN, size_t vK, float vAlpha, float vBeta, const std::any& vCustomParam)
+{
+_ASSERTE(vMatrixA && vMatrixB && vMatrixC);
+//todo: add your code here
+int threadCount = 1;
+    if(vCustomParam.has_value()) {
+        threadCount = std::any_cast<int>(vCustomParam);
+    }
+    omp_set_num_threads(threadCount);
+#pragma omp parallel
+    {
+        const size_t total_iter = vM * vN;
+        const size_t thread_num = omp_get_num_threads();
+        const size_t thread_id = omp_get_thread_num();
+        const size_t iter_per_thread = total_iter / thread_num;
+        const size_t start_iter = thread_id * iter_per_thread;
+        const size_t end_iter = (thread_id == thread_num - 1) ? total_iter : (thread_id + 1) * iter_per_thread;
+        for (size_t iter = start_iter; iter < end_iter; ++iter) {
+            const size_t i = iter / vN;
+            const size_t j = iter % vN;
+            vMatrixC[i * vN + j] *= vBeta;
+        }
+        for (size_t iter = start_iter; iter < end_iter; ++iter) {
+            const size_t i = iter / vN;
+            const size_t j = iter % vN;
+            float sum = 0.0f;
+            for (size_t k = 0; k < vK; ++k) {
+                sum += vMatrixA[i * vK + k] * vMatrixB[k * vN + j];
+            }
+            vMatrixC[i * vN + j] += vAlpha * sum;
+        }
+    }
+}
+```
+
+Step1:写上并行声明#paragma omp parallel, 初始化所有相关参数，包括M，N合并后的迭代数目total_iter,总线程数thread_num和thread_id
+
+Step2:计算各个线程负责的迭代空间，包括每个线程处理的迭代数目 iter_per_thread, 处理的起始迭代编号start_iter和处理的最终迭代编号end_iter.
+
+Step3.在C=beta x C 部分从每个迭代中还原出i,j,呈上变化系数beta
+
+Step4.在等价于M x N 的一次外迭代里复原出处理的坐标i,j. 定义sum存储累加结果减少重复内存访问
+
+Step5. 执行内部核心的k次迭代。将计算的结果加入sum中，而后对其施加变化系数alpha后加入到最终的C[i][j]中
 
 ### 2.5 基于分块+collapse+调整循环的GEMM
 
